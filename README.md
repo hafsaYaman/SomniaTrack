@@ -1,2 +1,2 @@
 # SomniaTrack
-A sleep tracler AI app
+A sleep tracker AI app
