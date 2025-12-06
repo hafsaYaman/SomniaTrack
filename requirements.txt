@@ -7,3 +7,10 @@ tensorflow
 torch
 torchaudio
 jupyter
+streamlit
+requests
+openai
+python-dotenv
+streamlit-webrtc
+opencv-python-headless
+av

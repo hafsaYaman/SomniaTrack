@@ -1,0 +1,167 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>SomniaTrack Vision Capture</title>
+  <style>
+    body { font-family: system-ui, sans-serif; background: #0b1020; color: #e5e7eb; margin: 0; padding: 16px; }
+    .card { background: #121a2a; padding: 16px; border-radius: 12px; max-width: 1000px; margin: 0 auto; }
+    #log { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px; max-height: 240px; overflow-y: auto; background: #0f1626; padding: 10px; border-radius: 10px; margin-top: 12px; }
+    button { padding: 10px 14px; border: none; border-radius: 8px; background: #6ee7b7; color: #0b1020; font-weight: 700; cursor: pointer; }
+    label { font-size: 13px; color: #93a3b8; }
+    table { width: 100%; border-collapse: collapse; margin-top: 12px; }
+    th, td { padding: 8px; text-align: left; border-bottom: 1px solid #1f2a44; font-size: 13px; }
+    #last-img { border-radius: 10px; background:#0f1626; padding:6px; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h2>SomniaTrack Vision Capture</h2>
+    <p>Webcam frames are captured on an interval and sent to the API for sleep-context analysis. Keep this page open; everything runs here.</p>
+    <div style="display:flex; gap:12px; align-items:center; flex-wrap:wrap;">
+      <label>Interval (seconds): <input id="interval" type="number" min="3" max="60" step="1" value="10" /></label>
+      <label>API URL: <input id="api" type="text" size="36" value="http://127.0.0.1:8000/vision-analyze" /></label>
+      <button id="start">Start</button>
+      <button id="stop" disabled>Stop</button>
+    </div>
+    <div style="margin-top:12px; display:flex; gap:12px; align-items:flex-start; flex-wrap:wrap;">
+      <video id="cam" autoplay playsinline width="320" height="240" style="border-radius:10px; background:#0f1626"></video>
+      <canvas id="c" width="320" height="240" style="display:none"></canvas>
+      <div>
+        <div style="font-size:14px; color:#93a3b8; margin-bottom:6px;">Most recent analyzed frame</div>
+        <img id="last-img" width="320" height="240" alt="Last analyzed frame" />
+        <div id="last-meta" style="font-size:13px; color:#93a3b8; margin-top:6px;"></div>
+      </div>
+    </div>
+    <div style="margin-top:12px;">
+      <div style="font-size:14px; font-weight:700; margin-bottom:4px;">Recent events</div>
+      <table>
+        <thead><tr><th>Timestamp</th><th>Posture</th><th>Movement</th><th>Bed exit</th><th>Note</th></tr></thead>
+        <tbody id="events"></tbody>
+      </table>
+    </div>
+    <div id="summary-box" style="margin-top:12px; padding:12px; border-radius:10px; background:#0f1626; display:none;">
+      <div style="font-size:14px; font-weight:700; margin-bottom:6px;">Session summary</div>
+      <div id="summary-text" style="font-size:13px; color:#e5e7eb;"></div>
+    </div>
+    <div id="log"></div>
+  </div>
+
+  <script>
+    const video = document.getElementById('cam');
+    const canvas = document.getElementById('c');
+    const logBox = document.getElementById('log');
+    const startBtn = document.getElementById('start');
+    const stopBtn = document.getElementById('stop');
+    const eventsBody = document.getElementById('events');
+    const summaryBox = document.getElementById('summary-box');
+    const summaryText = document.getElementById('summary-text');
+    let timer = null;
+    let streamRef = null;
+    let events = [];
+
+    function log(msg){
+      const ts = new Date().toISOString();
+      logBox.innerHTML = `${ts} | ${msg}<br>` + logBox.innerHTML;
+    }
+
+    async function startCam(){
+      streamRef = await navigator.mediaDevices.getUserMedia({ video:true, audio:false });
+      video.srcObject = streamRef;
+      log('camera started');
+    }
+
+    function addEventRow(data){
+      const row = document.createElement('tr');
+      row.innerHTML = `<td>${data.timestamp}</td><td>${data.posture}</td><td>${data.movement}</td><td>${data.bed_exit}</td><td>${data.note||''}</td>`;
+      eventsBody.prepend(row);
+      while(eventsBody.children.length > 50){
+        eventsBody.removeChild(eventsBody.lastChild);
+      }
+    }
+
+    async function captureAndSend(){
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+      const blob = await new Promise(res => canvas.toBlob(res, 'image/jpeg', 0.9));
+      const form = new FormData();
+      form.append('frame', blob, 'frame.jpg');
+      try{
+        const resp = await fetch(document.getElementById('api').value.trim(), { method:'POST', body: form });
+        if(!resp.ok){
+          const text = await resp.text();
+          throw new Error(`HTTP ${resp.status}: ${text}`);
+        }
+        const data = await resp.json();
+        log(`analyzed: posture=${data.posture} movement=${data.movement} bed_exit=${data.bed_exit} note=${data.note || ''}`);
+        const ts = new Date().toISOString();
+        const evt = { timestamp_iso: ts, ...data };
+        addEventRow({ timestamp: ts, ...data });
+        events.push(evt);
+        const imgUrl = URL.createObjectURL(blob);
+        document.getElementById('last-img').src = imgUrl;
+        document.getElementById('last-meta').innerText = `${ts} • posture=${data.posture}, movement=${data.movement}, bed_exit=${data.bed_exit}`;
+      }catch(err){
+        log('error: ' + err);
+      }
+    }
+
+    startBtn.onclick = async () => {
+      summaryBox.style.display = 'none';
+      summaryText.innerHTML = '';
+      events = [];
+      eventsBody.innerHTML = '';
+      const intervalMs = Math.max(3, parseInt(document.getElementById('interval').value, 10) || 10) * 1000;
+      startBtn.disabled = true;
+      stopBtn.disabled = false;
+      await startCam();
+      log('capturing every ' + intervalMs/1000 + 's');
+      timer = setInterval(captureAndSend, intervalMs);
+      captureAndSend();
+    };
+
+    stopBtn.onclick = () => {
+      if(timer){ clearInterval(timer); timer = null; }
+      if(streamRef){
+        streamRef.getTracks().forEach(t => t.stop());
+        streamRef = null;
+      }
+      startBtn.disabled = false;
+      stopBtn.disabled = true;
+      log('stopped capturing');
+      summarizeSession();
+    };
+
+    async function summarizeSession(){
+      if(!events.length){
+        log('no events to summarize');
+        return;
+      }
+      try{
+        const analyzeUrl = document.getElementById('api').value.trim();
+        const summaryUrl = analyzeUrl.replace(/vision-analyze.*/, 'vision-summarize');
+        const resp = await fetch(summaryUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(events),
+        });
+        if(!resp.ok){
+          const text = await resp.text();
+          throw new Error(`HTTP ${resp.status}: ${text}`);
+        }
+        const data = await resp.json();
+        summaryText.innerHTML = `
+          <div style="margin-bottom:6px;">${data.summary || ''}</div>
+          ${Array.isArray(data.key_events) ? '<div><b>Key events</b><ul>' + data.key_events.map(e=>`<li>${e}</li>`).join('') + '</ul></div>' : ''}
+          ${Array.isArray(data.notable_movements) ? '<div><b>Notable movements</b><ul>' + data.notable_movements.map(e=>`<li>${e}</li>`).join('') + '</ul></div>' : ''}
+          ${Array.isArray(data.recommendations) ? '<div><b>Recommendations</b><ul>' + data.recommendations.map(e=>`<li>${e}</li>`).join('') + '</ul></div>' : ''}
+        `;
+        summaryBox.style.display = 'block';
+        log('summary generated');
+      }catch(err){
+        log('summary error: ' + err);
+      }
+    }
+  </script>
+</body>
+</html>

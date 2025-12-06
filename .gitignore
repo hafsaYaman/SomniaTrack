@@ -1,0 +1,11 @@
+.env
+.env.*
+*.env
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*.pyo
+.DS_Store
+.streamlit/
+*.log

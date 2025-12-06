@@ -17,8 +17,8 @@ We do not store raw audio by default. With consent, we can store summaries to he
 
 
 with st.expander("What data is used?", expanded=False):
-st.markdown("- Audio features (e.g., mel spectrogram statistics) — not the raw audio contents")
-st.markdown("- Optional: shift schedule, ZIP for community trends, self‑reported noise levels")
+    st.markdown("- Audio features (e.g., mel spectrogram statistics) — not the raw audio contents")
+    st.markdown("- Optional: shift schedule, ZIP for community trends, self‑reported noise levels")
 
 
 consent = st.checkbox("I consent to processing my audio and anonymized summaries for research/improvement.")
@@ -31,14 +31,14 @@ st.session_state["store_summary"] = store_summary
 
 col1, col2 = st.columns(2)
 with col1:
-if st.button("Check API Health", use_container_width=True):
-try:
-st.success(API.health())
-except Exception as e:
-st.error(f"API error: {e}")
+    if st.button("Check API Health", use_container_width=True):
+        try:
+            st.success(API.health())
+        except Exception as e:  # pylint: disable=broad-except
+            st.error(f"API error: {e}")
 with col2:
-if st.button("View API Version", use_container_width=True):
-try:
-st.info(API.version())
-except Exception as e:
-st.error(f"API error: {e}")
+    if st.button("View API Version", use_container_width=True):
+        try:
+            st.info(API.version())
+        except Exception as e:  # pylint: disable=broad-except
+            st.error(f"API error: {e}")
