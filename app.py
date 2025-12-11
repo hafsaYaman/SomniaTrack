@@ -5,7 +5,7 @@ from moviepy.editor import VideoFileClip
 from openai import OpenAI
 
 load_dotenv()
-client = OpenAI(api_key=os.getenv("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"))
+client = OpenAI(api_key=os.getenv("https://probable-bassoon-q796j5rvgrvv2w7r-8000.app.github.dev/"))
 
 app = Flask(__name__)
 UPLOAD_FOLDER = "uploads"
